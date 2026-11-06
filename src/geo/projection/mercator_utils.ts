@@ -81,10 +81,12 @@ export function calculateTileMatrix(unwrappedTileID: UnwrappedTileIDType, worldS
     const scale = worldSize / zoomScale(canonical.z);
     const unwrappedX = canonical.x + Math.pow(2, canonical.z) * unwrappedTileID.wrap;
 
+    // What identity, translate and scale make, number for number, without three calls a tile a frame.
     const worldMatrix: Mat4f64 = new Float64Array(16);
-    mat4.identity(worldMatrix);
-    mat4.translate(worldMatrix, worldMatrix, [unwrappedX * scale, canonical.y * scale, 0]);
-    mat4.scale(worldMatrix, worldMatrix, [scale / EXTENT, scale / EXTENT, 1]);
+    worldMatrix[0] = worldMatrix[5] = scale / EXTENT;
+    worldMatrix[10] = worldMatrix[15] = 1;
+    worldMatrix[12] = unwrappedX * scale;
+    worldMatrix[13] = canonical.y * scale;
     return worldMatrix;
 }
 

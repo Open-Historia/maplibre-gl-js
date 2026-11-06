@@ -34,6 +34,8 @@ export class SourceFeatureState {
     stateChanges: LayerFeatureStatesMap;
     deletedStates: {};
     revision: number;
+    _layerStates: LayerFeatureStates = {};
+    _layerStatesRevision = -1;
 
     constructor() {
         this.state = {};
@@ -122,11 +124,17 @@ export class SourceFeatureState {
     }
 
     initializeTileState(tile: Tile, style: Style): void {
-        const layerStates: LayerFeatureStates = {};
-        for (const sourceLayer in this.state) {
-            layerStates[sourceLayer] = featureStatesMapToArray(this.state[sourceLayer]);
+        // A tile back from the cache with nothing new to apply: do not copy every feature's state to find that out.
+        if (tile.featureStateRevision === this.revision) return;
+        // The same for every tile that arrives until the state changes, and it can hold every feature on the map.
+        if (this._layerStatesRevision !== this.revision) {
+            this._layerStates = {};
+            for (const sourceLayer in this.state) {
+                this._layerStates[sourceLayer] = featureStatesMapToArray(this.state[sourceLayer]);
+            }
+            this._layerStatesRevision = this.revision;
         }
-        tile.setFeatureState(layerStates, style, this.revision);
+        tile.setFeatureState(this._layerStates, style, this.revision);
     }
 
     coalesceChanges(inViewTiles: InViewTiles, style: Style): void {

@@ -161,6 +161,15 @@ export function premultiplyAlpha(data: Uint8Array): Uint8Array {
     const out = new Uint8Array(data.length);
     for (let i = 0; i < data.length; i += 4) {
         const a = data[i + 3];
+        // Most of a tile's image atlas is padding or solid, and this runs as the tile arrives: the same bytes, sooner.
+        if (a === 0) continue;
+        if (a === 255) {
+            out[i + 0] = data[i + 0];
+            out[i + 1] = data[i + 1];
+            out[i + 2] = data[i + 2];
+            out[i + 3] = 255;
+            continue;
+        }
         out[i + 0] = Math.round(data[i + 0] * a / 255);
         out[i + 1] = Math.round(data[i + 1] * a / 255);
         out[i + 2] = Math.round(data[i + 2] * a / 255);

@@ -36,6 +36,10 @@ export class TerrainTileManager extends Evented {
      * contains a list of tileID-keys for the current scene. (only for performance)
      */
     _renderableTilesKeys: string[];
+    _coordsKeys: string[] = null;
+    _coordsSignature = '';
+    _coordsRevision = 0;
+    _coords = new globalThis.Map<string, Record<string, OverscaledTileID>>();
     /**
      * For each tile, the key of its raster-dem tile and the source zoom that key was scaled to, which changes once the
      * source has loaded its zoom range.
@@ -127,6 +131,20 @@ export class TerrainTileManager extends Evented {
         return changed;
     }
 
+    /** Moves on when the terrain tiles change, which is all that their coordinates hang on. */
+    coordsRevision(): number {
+        if (this._renderableTilesKeys !== this._coordsKeys) {
+            this._coordsKeys = this._renderableTilesKeys;
+            const signature = this._coordsKeys.join();
+            if (signature !== this._coordsSignature) {
+                this._coordsSignature = signature;
+                this._coords.clear();
+                this._coordsRevision++;
+            }
+        }
+        return this._coordsRevision;
+    }
+
     /**
      * Release the RTT objects for `tileID` (and its ancestors/descendants),
      */
@@ -176,9 +194,15 @@ export class TerrainTileManager extends Evented {
     ): Record<string, OverscaledTileID> {
         if (terrainTileRanges) {
             return this._getTerrainCoordsForTileRanges(tileID, terrainTileRanges);
-        } else {
-            return this._getTerrainCoordsForRegularTile(tileID);
         }
+        // Asked for every tile of every source, every frame, and it hangs only on the tiles: kept until those change.
+        this.coordsRevision();
+        let coords = this._coords.get(tileID.key);
+        if (!coords) {
+            coords = this._getTerrainCoordsForRegularTile(tileID);
+            this._coords.set(tileID.key, coords);
+        }
+        return coords;
     }
 
     /**

@@ -96,6 +96,7 @@ export type DEMState = 'loaded' | 'loading' | 'none';
  *
  */
 export class Terrain {
+    _frameTerrainData = new globalThis.Map<string, TerrainData>();
     /**
      * The style this terrain corresponds to
      */
@@ -341,9 +342,33 @@ export class Terrain {
      * @returns the terrain data to use in the program
      */
     getTerrainData(tileID: OverscaledTileID): TerrainData {
+        // Asked per tile, per layer and per label in a frame, and the same each time: forgotten when a frame starts.
+        let data = this._frameTerrainData.get(tileID.key);
+        if (!data) {
+            data = this._getTerrainData(tileID);
+            this._frameTerrainData.set(tileID.key, data);
+        }
+        return data;
+    }
+
+    beginFrame(): void {
+        this._frameTerrainData.clear();
+    }
+
+    /** Textures bind to the active unit: this runs in the middle of a draw, whose own textures are on the others. */
+    _onDemUnit(work: () => void): void {
+        const context = this.painter.context;
+        const unit = context.activeTexture.current;
+        context.activeTexture.set(context.gl.TEXTURE3);
+        work();
+        context.terrainTexture = null;
+        context.activeTexture.set(unit);
+    }
+
+    _getTerrainData(tileID: OverscaledTileID): TerrainData {
         // create empty DEM Objects, which will used while raster-dem tiles are loading.
         // creates an empty depth-buffer texture which is needed, during the initialization process of the 3d mesh..
-        if (!this._emptyDemTexture) {
+        if (!this._emptyDemTexture) this._onDemUnit(() => {
             const context = this.painter.context;
             const image = new RGBAImage({width: 1, height: 1}, new Uint8Array(1 * 4));
             this._emptyDepthTexture = new Texture(context, image, context.gl.RGBA, {premultiply: false});
@@ -351,17 +376,17 @@ export class Terrain {
             this._emptyDemTexture = new Texture(context, new RGBAImage({width: 1, height: 1}), context.gl.RGBA, {premultiply: false});
             this._emptyDemTexture.bind(context.gl.NEAREST, context.gl.CLAMP_TO_EDGE);
             this._emptyDemMatrix = mat4.identity([]);
-        }
+        });
         // find covering dem tile and prepare demTexture
         const sourceTile = this.tileManager.getSourceTile(tileID, true);
-        if (sourceTile?.dem && (!sourceTile.demTexture || sourceTile.needsTerrainPrepare)) {
+        if (sourceTile?.dem && (!sourceTile.demTexture || sourceTile.needsTerrainPrepare)) this._onDemUnit(() => {
             const context = this.painter.context;
             sourceTile.demTexture ||= this.painter.getTileTexture(sourceTile.dem.stride);
             if (sourceTile.demTexture) sourceTile.demTexture.update(sourceTile.dem.getPixels(), {premultiply: false});
             else sourceTile.demTexture = new Texture(context, sourceTile.dem.getPixels(), context.gl.RGBA, {premultiply: false});
             sourceTile.demTexture.bind(context.gl.NEAREST, context.gl.CLAMP_TO_EDGE);
             sourceTile.needsTerrainPrepare = false;
-        }
+        });
         const terrainMatrix = sourceTile ? this._getDEMTileMatrix(tileID, sourceTile) : this._emptyDemMatrix;
         // return uniform values & textures
         return {

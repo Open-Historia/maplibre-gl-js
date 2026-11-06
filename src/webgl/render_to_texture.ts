@@ -6,6 +6,7 @@ import {RTT_DIFFERENCES, RTTFingerprint, type RTTDifference} from './rtt_fingerp
 import {isCustomStyleLayer} from '../style/style_layer/custom_style_layer.ts';
 
 import type {Tile} from '../tile/tile.ts';
+import type {RenderOrder, TileManager} from '../tile/tile_manager.ts';
 import type {OverscaledTileID} from '../tile/tile_id.ts';
 import type {Style} from '../style/style.ts';
 import type {Terrain} from '../render/terrain.ts';
@@ -75,6 +76,8 @@ export class RenderToTexture {
      * e.g. render 4 raster-tiles with size 256px to the 512px render-to-texture tile
      */
     _coordsAscending: {[_: string]: {[_:string]: OverscaledTileID[]}};
+    /** What `_coordsAscending` holds for a source, kept while neither its tiles nor the terrain's change. */
+    _keptCoords = new WeakMap<RenderOrder, {revision: number; ranges: unknown; coords: {[_:string]: OverscaledTileID[]}}>();
     /**
      * This frame's fingerprint for each render-to-texture tile, keyed by source id
      * then tile key. A tile whose stored fingerprint differs has stale textures.
@@ -155,17 +158,10 @@ export class RenderToTexture {
             const tileManager = style.tileManagers[sourceId];
             if (!tileManager) continue;
 
-            this._coordsAscending[sourceId] = {};
-            const coordsAscending = this._coordsAscending[sourceId];
             const source = tileManager.getSource();
             const terrainTileRanges = source instanceof ImageSource ? source.terrainTileRanges : null;
-            for (const tileID of tileManager.getVisibleCoordinates()) {
-                const keys = this.terrain.tileManager.getTerrainCoords(tileID, terrainTileRanges);
-                for (const key in keys) {
-                    coordsAscending[key] ||= [];
-                    coordsAscending[key].push(keys[key]);
-                }
-            }
+            const coordsAscending = this._coordsOnTerrain(tileManager, terrainTileRanges);
+            this._coordsAscending[sourceId] = coordsAscending;
 
             this._rttFingerprints[sourceId] = {};
             const fingerprints = this._rttFingerprints[sourceId];
@@ -202,6 +198,24 @@ export class RenderToTexture {
                 this._releaseChangedTextures(tile, style, stacks);
             }
         }
+    }
+
+    _coordsOnTerrain(tileManager: TileManager, ranges: ImageSource['terrainTileRanges'] | null): {[_:string]: OverscaledTileID[]} {
+        const order = tileManager.getRenderOrder();
+        const revision = this.terrain.tileManager.coordsRevision();
+        const kept = this._keptCoords.get(order);
+        if (kept?.revision === revision && kept.ranges === ranges) return kept.coords;
+
+        const coords: {[_:string]: OverscaledTileID[]} = {};
+        for (const tileID of order.ascending) {
+            const keys = this.terrain.tileManager.getTerrainCoords(tileID, ranges);
+            for (const key in keys) {
+                coords[key] ||= [];
+                coords[key].push(keys[key]);
+            }
+        }
+        this._keptCoords.set(order, {revision, ranges, coords});
+        return coords;
     }
 
     /**

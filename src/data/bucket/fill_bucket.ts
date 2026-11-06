@@ -209,6 +209,8 @@ export class FillBucket implements Bucket {
     addFeature(feature: BucketFeature, geometry: Point[][], index: number, canonical: CanonicalTileID, imagePositions: {
         [_: string]: ImagePosition;
     }, subdivisionGranularity: SubdivisionGranularitySetting): void {
+        // Only antialiasing draws the outline. As written, not evaluated: tiles are drawn at other zooms, and setPaintProperty rebuilds them.
+        const outlined = this.layers.some((layer) => layer.getPaintProperty('fill-antialias') !== false);
         for (const polygon of classifyRings(geometry, EARCUT_MAX_RINGS)) {
             const subdivided = subdividePolygon(polygon, canonical, subdivisionGranularity.fill.getGranularityForZoomLevel(canonical.z));
 
@@ -223,9 +225,9 @@ export class FillBucket implements Bucket {
                 this.indexArray,
                 subdivided.verticesFlattened,
                 subdivided.indicesTriangles,
-                this.segments2,
-                this.indexArray2,
-                subdivided.indicesLineList,
+                outlined ? this.segments2 : undefined,
+                outlined ? this.indexArray2 : undefined,
+                outlined ? subdivided.indicesLineList : undefined,
             );
         }
         this.programConfigurations.populatePaintArrays(this.layoutVertexArray.length, feature, index, {imagePositions, canonical});

@@ -194,10 +194,8 @@ export class GeoJSONWorkerSource implements WorkerSource {
             delete this._pendingRequest;
             this.tileState.clearLoaded();
 
-            // Sending a large GeoJSON payload from the worker to the main thread is slow so only do if necessary.
-            // Send data only if it was loaded from a URL, otherwise the main thread already has a copy of this data.
+            // Not sent back to the page: posting 58 MB froze it. So getData() and updateData() do not work on a URL source.
             const result: GeoJSONWorkerSourceLoadDataResult = {};
-            if (params.request) result.data = params.data;
 
             this._finishRequestTiming(timing, params, result);
             return result;

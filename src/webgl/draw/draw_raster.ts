@@ -101,6 +101,8 @@ function drawTiles(
     const isTerrain = !!frameRenderContext.terrain;
 
     // Draw all tiles
+    let secondTextureBound = false;
+
     for (const coord of coords) {
         // Set the lower zoom level to sublayer 0, and higher zoom levels to higher sublayers
         // Use gl.LESS to prevent double drawing in areas where tiles overlap.
@@ -113,15 +115,18 @@ function drawTiles(
         context.activeTexture.set(gl.TEXTURE0);
         tile.texture.bind(textureFilter, gl.CLAMP_TO_EDGE, gl.LINEAR_MIPMAP_NEAREST);
 
-        // create second texture - use either the current tile or fade tile to bind second texture below
-        context.activeTexture.set(gl.TEXTURE1);
+        // The fade tile, read only while fading. Otherwise a tile's texture goes there once: the unit must not hold what is being rendered to.
         const {parentTile, parentScaleBy, parentTopLeft, fadeValues} = getFadeProperties(tile, tileManager, fadeDuration, isTerrain);
         tile.fadeOpacity = fadeValues.tileOpacity;
         if (parentTile) {
             parentTile.fadeOpacity = fadeValues.parentTileOpacity;
+            context.activeTexture.set(gl.TEXTURE1);
             parentTile.texture.bind(textureFilter, gl.CLAMP_TO_EDGE, gl.LINEAR_MIPMAP_NEAREST);
-        } else {
+            secondTextureBound = true;
+        } else if (!secondTextureBound || fadeValues.fadeMix.mix !== 0) {
+            context.activeTexture.set(gl.TEXTURE1);
             tile.texture.bind(textureFilter, gl.CLAMP_TO_EDGE, gl.LINEAR_MIPMAP_NEAREST);
+            secondTextureBound = true;
         }
 
         // Enable anisotropic filtering only when the pitch is greater than the threshold pitch.

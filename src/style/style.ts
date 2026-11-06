@@ -73,6 +73,9 @@ import type {Projection} from '../geo/projection/projection.ts';
 import type {OverscaledTileID} from '../tile/tile_id.ts';
 
 const empty = emptyStyle();
+
+// How long the labels shown may stand while the camera moves: a few frames, too short to see.
+export const PLACEMENT_PACE_MS = 100;
 /**
  * A feature identifier that is bound to a source
  */
@@ -240,6 +243,9 @@ export class Style extends Evented<MapEventType> {
     _updatedPaintProps: {[layer: string]: true};
     _layerOrderChanged: boolean;
     _symbolPlacementTriggered: boolean;
+    _placedTiles: number;
+    _sweepSymbolLayers: globalThis.Map<string, StyleLayer[]> | null = null;
+    _coveringSweep: globalThis.Map<unknown, globalThis.Map<string, OverscaledTileID[]>> | null = null;
     _placedProjectionTransition: number;
     _initialGlobalState: Record<string, any>;
     _globalState: Record<string, any>;
@@ -1440,7 +1446,8 @@ export class Style extends Evented<MapEventType> {
     }
 
     _updatePaintProperty<K extends keyof AllPaintProperties>(layer: StyleLayer, name: K, value: AllPaintProperties[K], options: StyleSetterOptions = {}): void {
-        const requiresRelayout = layer.setPaintProperty(name, value, options);
+        // Tiles of a layer without antialiasing are built without what its outline needs.
+        const requiresRelayout = layer.setPaintProperty(name, value, options) || name === 'fill-antialias';
         if (requiresRelayout) {
             this._updateLayer(layer);
         }
@@ -1901,9 +1908,20 @@ export class Style extends Evented<MapEventType> {
     }
 
     _updateSources(transform: ITransform): void {
+        this._coveringSweep = new globalThis.Map();
+        this._sweepSymbolLayers = new globalThis.Map();
+        for (const layerId in this._layers) {
+            const layer = this._layers[layerId];
+            if (layer.type !== 'symbol') continue;
+            const layers = this._sweepSymbolLayers.get(layer.source);
+            if (layers) layers.push(layer);
+            else this._sweepSymbolLayers.set(layer.source, [layer]);
+        }
         for (const id in this.tileManagers) {
             this.tileManagers[id].update(transform, this.map.terrain);
         }
+        this._coveringSweep = null;
+        this._sweepSymbolLayers = null;
     }
 
     _generateCollisionBoxes(): void {
@@ -1941,6 +1959,16 @@ export class Style extends Evented<MapEventType> {
     }
 
     _updatePlacement(transform: ITransform, showCollisionBoxes: boolean, fadeDuration: number, crossSourceCollisions: boolean, forceFullPlacement: boolean = false): boolean {
+        // With no fade every frame was a full placement: skipped when nothing it reads changed, and paced while moving. Another frame is asked for, so the last one comes.
+        if (fadeDuration === 0 && !forceFullPlacement && !this._layerOrderChanged && this.placement && this.pauseablePlacement?.isDone()) {
+            const tiles = this._symbolTilesSignature();
+            if (tiles === this._placedTiles) {
+                if (!this._placementInputsChanged(transform, showCollisionBoxes, crossSourceCollisions)) return false;
+                if (now() - this.placement.commitTime < PLACEMENT_PACE_MS) return true;
+            }
+            this._placedTiles = tiles;
+        }
+
         let symbolBucketsChanged = false;
         let placementCommitted = false;
 
@@ -2014,6 +2042,20 @@ export class Style extends Evented<MapEventType> {
 
         // false when we have just finished a placement that didn't change the visibility of any symbols
         return !this.pauseablePlacement.isDone() || this.placement.hasTransitions(now());
+    }
+
+    /** Changes when a tile with symbols comes, goes or takes new data. */
+    _symbolTilesSignature(): number {
+        const sources = new Set<string>();
+        for (const layerID of this._order) {
+            const layer = this._layers[layerID];
+            if (layer.type === 'symbol') sources.add(layer.source);
+        }
+        let hash = 0;
+        for (const source of sources) {
+            hash = (Math.imul(hash, 31) + this.tileManagers[source].getRenderOrder().signature) | 0;
+        }
+        return hash;
     }
 
     _releaseSymbolFadeTiles(): void {

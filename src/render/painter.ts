@@ -17,6 +17,7 @@ import {Mesh} from './mesh.ts';
 import {FrameRenderContext, type FrameRenderData} from './frame_render_context.ts';
 import {updateFrameUniformBuffer} from '../webgl/frame_uniform_buffer.ts';
 import {releaseProjectionUniformBuffers} from '../webgl/projection_uniform_buffer.ts';
+import {releaseTerrainUniformBuffers} from '../webgl/terrain_uniform_buffer.ts';
 import {coveringTiles} from '../geo/projection/covering_tiles.ts';
 import {isSymbolStyleLayer} from '../style/style_layer/symbol_style_layer.ts';
 import {isCircleStyleLayer} from '../style/style_layer/circle_style_layer.ts';
@@ -251,6 +252,8 @@ export class Painter {
 
         style.imageManager.beginFrame();
         releaseProjectionUniformBuffers(this.context);
+        releaseTerrainUniformBuffers(this.context);
+        style.map.terrain?.beginFrame();
 
         const layerIds = style._order;
         const tileManagers = style.tileManagers;
@@ -265,9 +268,10 @@ export class Painter {
                 tileManager.prepare(this.context);
             }
 
-            coordsAscending[id] = tileManager.getVisibleCoordinates(false);
-            coordsDescending[id] = coordsAscending[id].slice().reverse();
-            coordsDescendingSymbol[id] = tileManager.getVisibleCoordinates(true).reverse();
+            const order = tileManager.getRenderOrder();
+            coordsAscending[id] = order.ascending;
+            coordsDescending[id] = order.descending;
+            coordsDescendingSymbol[id] = order.descendingSymbol;
         }
 
         frameRenderContext.opaquePassCutoff = Infinity;

@@ -20,7 +20,24 @@ export function createTerrainUniformBuffer(context: Context): UniformBuffer {
     return new UniformBuffer(context, UBO_BINDINGS.TerrainUBO, layout);
 }
 
-export function updateTerrainUniformBuffer(buffer: UniformBuffer, terrain: TerrainData): void {
+/** A buffer for each tile's terrain data in a frame, as the projection data has. The data is the same object all frame. */
+export function bindTerrainUniformBuffer(context: Context, terrain: TerrainData): void {
+    const kept = context.keyedTerrainUniformBuffers.get(terrain);
+    if (kept) {
+        kept.bind();
+        return;
+    }
+    const buffer = context.freeTerrainUniformBuffers.pop() ?? createTerrainUniformBuffer(context);
+    context.keyedTerrainUniformBuffers.set(terrain, buffer);
+    updateTerrainUniformBuffer(buffer, terrain);
+}
+
+export function releaseTerrainUniformBuffers(context: Context): void {
+    context.freeTerrainUniformBuffers.push(...context.keyedTerrainUniformBuffers.values());
+    context.keyedTerrainUniformBuffers.clear();
+}
+
+function updateTerrainUniformBuffer(buffer: UniformBuffer, terrain: TerrainData): void {
     const f32 = buffer.pending;
     f32.set(terrain.u_terrain_matrix, offsets.u_terrain_matrix);
     f32.set(terrain.u_terrain_unpack, offsets.u_terrain_unpack);

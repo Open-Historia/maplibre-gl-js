@@ -470,6 +470,13 @@ class CrossFadedDasharrayBinder extends CrossFadedBinder<DashEntry> {
     }
 }
 
+// Only pattern and dash programs read floorwidth, and only antialiasing reads fill-outline-color. As written: tiles are drawn at other zooms.
+function isUnreadPaint(layer: TypedStyleLayer, property: string): boolean {
+    const written = (name: string) => (layer as any).getPaintProperty(name);
+    if (property === 'line-floorwidth') return written('line-dasharray') === undefined && written('line-pattern') === undefined;
+    return property === 'fill-outline-color' && written('fill-antialias') === false;
+}
+
 /**
  * @internal
  * ProgramConfiguration contains the logic for binding style layer properties and tile
@@ -507,6 +514,8 @@ export class ProgramConfiguration {
             if (!(value instanceof PossiblyEvaluatedPropertyValue) || !supportsPropertyExpression(value.property.specification)) {
                 continue;
             }
+            // A value per vertex that no program of this layer reads. A constant costs nothing, so it is left alone.
+            if (value.value.kind !== 'constant' && isUnreadPaint(layer, property)) continue;
             const names = paintAttributeNames(property, layer.type);
             const expression = value.value;
             const type = value.property.specification.type;

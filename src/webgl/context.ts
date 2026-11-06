@@ -8,6 +8,7 @@ import {ColorMode} from './color_mode.ts';
 import {deepEqual} from '../util/util.ts';
 import {ClearColor, ClearDepth, ClearStencil, ColorMask, DepthMask, StencilMask, StencilFunc, StencilOp, StencilTest, DepthRange, DepthTest, DepthFunc, Blend, BlendFunc, BlendColor, BlendEquation, CullFace, CullFaceSide, FrontFace, ProgramValue, ActiveTextureUnit, Viewport, BindFramebuffer, BindRenderbuffer, BindTexture, BindVertexBuffer, BindElementBuffer, BindVertexArray, PixelStoreUnpack, PixelStoreUnpackPremultiplyAlpha, PixelStoreUnpackFlipY} from './value.ts';
 
+import type {TerrainData} from '../render/terrain.ts';
 import type {DepthMode} from './depth_mode.ts';
 import type {StencilMode} from './stencil_mode.ts';
 import type {CullFaceMode} from './cull_face_mode.ts';
@@ -30,6 +31,9 @@ type ClearArgs = {
  * A webgl wrapper class to allow injection, mocking and abstraction
  */
 export class Context {
+    /** What Program.draw last bound to the terrain's texture units. */
+    terrainDepthTexture: WebGLTexture | null = null;
+    terrainTexture: WebGLTexture | null = null;
     gl: WebGL2RenderingContext;
 
     currentNumAttributes: number;
@@ -71,6 +75,8 @@ export class Context {
     keyedProjectionUniformBuffers: Map<string, UniformBuffer>;
     freeProjectionUniformBuffers: UniformBuffer[];
     terrainUniformBuffer: UniformBuffer;
+    keyedTerrainUniformBuffers: Map<TerrainData, UniformBuffer>;
+    freeTerrainUniformBuffers: UniformBuffer[];
     frameUniformBuffer: UniformBuffer;
 
     extTextureFilterAnisotropic: EXT_texture_filter_anisotropic | null;
@@ -126,6 +132,8 @@ export class Context {
         this.keyedProjectionUniformBuffers = new Map();
         this.freeProjectionUniformBuffers = [];
         this.terrainUniformBuffer = createTerrainUniformBuffer(this);
+        this.keyedTerrainUniformBuffers = new Map();
+        this.freeTerrainUniformBuffers = [];
         this.frameUniformBuffer = createFrameUniformBuffer(this);
     }
 
@@ -133,6 +141,7 @@ export class Context {
     destroy(): void {
         destroyProjectionUniformBuffers(this);
         this.terrainUniformBuffer.destroy();
+        for (const buffer of [...this.keyedTerrainUniformBuffers.values(), ...this.freeTerrainUniformBuffers]) buffer.destroy();
         this.frameUniformBuffer.destroy();
     }
 
@@ -167,6 +176,8 @@ export class Context {
     }
 
     setDirty(): void {
+        this.terrainDepthTexture = null;
+        this.terrainTexture = null;
         this.clearColor.dirty = true;
         this.clearDepth.dirty = true;
         this.clearStencil.dirty = true;

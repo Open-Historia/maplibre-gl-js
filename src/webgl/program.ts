@@ -3,7 +3,7 @@ import {VertexArrayObject} from './vertex_array_object.ts';
 import {terrainPreludeUniforms, type TerrainPreludeUniformsType} from './program/terrain_program.ts';
 import {applyUBOBindings} from './uniform_buffer.ts';
 import {bindProjectionUniformBuffer} from './projection_uniform_buffer.ts';
-import {updateTerrainUniformBuffer} from './terrain_uniform_buffer.ts';
+import {bindTerrainUniformBuffer} from './terrain_uniform_buffer.ts';
 
 import type {ProgramConfiguration} from '../data/program_configuration.ts';
 import type {Context} from './context.ts';
@@ -207,7 +207,7 @@ export class Program<Us extends UniformBindings> {
         if (this.failedToCreate) return;
 
         context.program.set(this.program);
-        context.terrainUniformBuffer.bind();
+        if (!terrain) context.terrainUniformBuffer.bind();
         context.frameUniformBuffer.bind();
         context.setDepthMode(depthMode);
         context.setStencilMode(stencilMode);
@@ -216,14 +216,24 @@ export class Program<Us extends UniformBindings> {
 
         // set variables used by the 3d functions defined in _prelude.vertex.glsl
         if (terrain) {
-            context.activeTexture.set(gl.TEXTURE2);
-            gl.bindTexture(gl.TEXTURE_2D, terrain.depthTexture);
-            context.activeTexture.set(gl.TEXTURE3);
-            gl.bindTexture(gl.TEXTURE_2D, terrain.texture);
+            // Bound only when they change, and the active unit is never left here, as textures bind to it unseen. `context.setDirty()` forgets them.
+            const depthChanged = context.terrainDepthTexture !== terrain.depthTexture;
+            const demChanged = context.terrainTexture !== terrain.texture;
+            if (depthChanged) {
+                context.activeTexture.set(gl.TEXTURE2);
+                gl.bindTexture(gl.TEXTURE_2D, terrain.depthTexture);
+                context.terrainDepthTexture = terrain.depthTexture;
+            }
+            if (demChanged) {
+                context.activeTexture.set(gl.TEXTURE3);
+                gl.bindTexture(gl.TEXTURE_2D, terrain.texture);
+                context.terrainTexture = terrain.texture;
+            }
+            if (depthChanged || demChanged) context.activeTexture.set(gl.TEXTURE0);
             for (const name in this.terrainUniforms) {
                 this.terrainUniforms[name].set(terrain[name]);
             }
-            updateTerrainUniformBuffer(context.terrainUniformBuffer, terrain);
+            bindTerrainUniformBuffer(context, terrain);
         }
 
         bindProjectionUniformBuffer(context, projectionData);

@@ -127,6 +127,14 @@ function isSerializeHandledByBuiltin(input: unknown) {
     );
 }
 
+const plainData = new WeakSet<object>();
+
+/** Marks plain data such as GeoJSON: `postMessage` copies it faster than walking it here. */
+export function markPlainData<T>(data: T): T {
+    if (data && typeof data === 'object') plainData.add(data);
+    return data;
+}
+
 /**
  * Serialize the given object for transfer to or from a web worker.
  *
@@ -140,6 +148,7 @@ function isSerializeHandledByBuiltin(input: unknown) {
  * this should happen in the client code, before using serialize().)
  */
 export function serialize(input: unknown, transferables?: Transferable[] | null): Serialized {
+    if (typeof input === 'object' && input !== null && plainData.has(input)) return input as Serialized;
     if (isSerializeHandledByBuiltin(input)) {
         if (isArrayBuffer(input) || isImageBitmap(input)) {
             if (transferables) {

@@ -117,6 +117,7 @@ export class Tile {
     queryPadding: number;
 
     symbolFadeHoldUntil: number;
+    dataRevision: number = 0;
     hasSymbolBuckets: boolean;
     hasRTLText: boolean;
     dependencies: any;
@@ -280,6 +281,7 @@ export class Tile {
         }
 
         this.state = 'loaded';
+        this.dataRevision++;
 
         // empty GeoJSON tile
         if (!data) {

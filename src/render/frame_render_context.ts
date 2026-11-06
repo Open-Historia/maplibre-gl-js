@@ -23,6 +23,7 @@ import type {LightPropsPossiblyEvaluated} from '../style/light_properties.g.ts';
 import type {SkyPropsPossiblyEvaluated} from '../style/sky_properties.g.ts';
 import type {Projection, TileMeshUsage} from '../geo/projection/projection.ts';
 import type {CrossTileID, VariableOffset} from '../symbol/placement.ts';
+import type {CustomLayerProjectionData} from '../geo/projection/projection_data.ts';
 
 export type RenderPass = 'offscreen' | 'opaque' | 'translucent';
 
@@ -85,6 +86,14 @@ const MERCATOR_SHADER_VARIANT: ProjectionShaderVariant = {
     prelude: shaders.projectionMercator
 };
 
+const sameTiles = (tileIDs: OverscaledTileID[], keys: string[]): boolean => {
+    if (keys.length !== tileIDs.length) return false;
+    for (let i = 0; i < keys.length; i++) {
+        if (tileIDs[i].key !== keys[i]) return false;
+    }
+    return true;
+};
+
 /**
  * @internal
  * The state of one frame, created per render and updated as rendering proceeds.
@@ -106,6 +115,9 @@ export class FrameRenderContext {
     private currentStencilSource: string;
     private nextStencilID: number = 1;
     private tileClippingMaskIDs: Record<string, number> = {};
+    customLayerProjectionData: CustomLayerProjectionData | undefined;
+    private tileClippingMaskKeys: string[] = [];
+    private tileClippingMaskTarget: WebGLFramebuffer | null = null;
 
     constructor(options: FrameRenderContextOptions) {
         this.transform = options.transform;
@@ -221,6 +233,15 @@ export class FrameRenderContext {
             return;
         }
 
+        // Sources sharing tiles share masks, which were half of all draws on a flat map. Whatever else writes to the stencil clears currentStencilSource.
+        const target = this.context.bindFramebuffer.current;
+        if (this.currentStencilSource !== undefined && target === this.tileClippingMaskTarget && sameTiles(tileIDs, this.tileClippingMaskKeys)) {
+            this.currentStencilSource = layer.source;
+            return;
+        }
+        this.tileClippingMaskKeys = tileIDs.map((tileID) => tileID.key);
+        this.tileClippingMaskTarget = target;
+
         this.currentStencilSource = layer.source;
 
         if (this.nextStencilID + tileIDs.length > 256) {
@@ -296,7 +317,7 @@ export class FrameRenderContext {
      */
     getStencilConfigForOverlapAndUpdateStencilID(tileIDs: OverscaledTileID[]): [Record<number, Readonly<StencilMode>>, OverscaledTileID[]] {
         const gl = this.context.gl;
-        const coords = tileIDs.sort((a, b) => b.overscaledZ - a.overscaledZ);
+        const coords = tileIDs.slice().sort((a, b) => b.overscaledZ - a.overscaledZ);
         const minTileZ = coords[coords.length - 1].overscaledZ;
         const stencilValues = coords[0].overscaledZ - minTileZ + 1;
         if (stencilValues > 1) {
@@ -320,7 +341,7 @@ export class FrameRenderContext {
         OverscaledTileID[]
     ] {
         const gl = this.context.gl;
-        const coords = tileIDs.sort((a, b) => b.overscaledZ - a.overscaledZ);
+        const coords = tileIDs.slice().sort((a, b) => b.overscaledZ - a.overscaledZ);
         const minTileZ = coords[coords.length - 1].overscaledZ;
         const stencilValues = coords[0].overscaledZ - minTileZ + 1;
 

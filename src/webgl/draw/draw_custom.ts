@@ -15,13 +15,18 @@ export function drawCustom(painter: Painter, tileManager: TileManager, layer: Cu
         return;
     }
 
+    const implementation = layer.implementation;
+    // Called in every pass, and most layers draw in one: what follows is not needed in the others.
+    const pass = frameRenderContext.currentPass;
+    if (pass === 'offscreen' ? !implementation.prerender : pass !== 'translucent') return;
+
     const {isRenderingGlobe, projectionShaderVariant} = frameRenderContext.data;
     const {terrain} = frameRenderContext;
     const context = frameRenderContext.context;
-    const implementation = layer.implementation;
     const transform = frameRenderContext.transform;
 
-    const projectionData = transform.getProjectionDataForCustomLayer(isRenderingGlobe);
+    // The same for every custom layer of a frame.
+    const projectionData = frameRenderContext.customLayerProjectionData ??= transform.getProjectionDataForCustomLayer(isRenderingGlobe);
 
     const customLayerArgs: CustomRenderMethodInput = {
         farZ: transform.farZ,

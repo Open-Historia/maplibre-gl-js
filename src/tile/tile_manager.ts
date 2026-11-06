@@ -41,6 +41,23 @@ type TileResult = {
     scale: number;
 };
 
+/** A source's tiles in the orders the painter draws them, kept while the tiles and the bearing are the same. */
+export type RenderOrder = {
+    signature: number;
+    bearing: number;
+    ascending: OverscaledTileID[];
+    descending: OverscaledTileID[];
+    descendingSymbol: OverscaledTileID[];
+};
+
+const sameTileIDs = (a: OverscaledTileID[], b: OverscaledTileID[]): boolean => {
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+        if (a[i].key !== b[i].key) return false;
+    }
+    return true;
+};
+
 /**
  * @internal
  * `TileManager` is responsible for
@@ -98,6 +115,8 @@ export class TileManager extends Evented<SourceEventType> {
     _updated: boolean;
     _rasterFadeDuration: number;
     _maxFadingAncestorLevels: number;
+    _retained: {ideal: OverscaledTileID[]; zoom: number; signature: number} | null = null;
+    _renderOrder: RenderOrder | null = null;
 
     static maxUnderzooming: number = 10;
     static maxOverzooming: number = 3;
@@ -514,8 +533,9 @@ export class TileManager extends Evented<SourceEventType> {
         const layers = this.map?.style?._layers;
         if (!layers) return maxElevation;
         const tiles = this._inViewTiles.getAllTiles();
-        for (const layerId in layers) {
-            const layer = layers[layerId];
+        // Every source went through every layer, every frame: a sweep sorts the symbol layers by source once.
+        const ownLayers = this.style?._sweepSymbolLayers?.get(this.id) ?? (this.style?._sweepSymbolLayers ? [] : Object.values(layers));
+        for (const layer of ownLayers) {
             if (layer.type !== 'symbol' || layer.source !== this.id || layer.isHidden(this.transform.zoom)) continue;
             const symbolLayer = layer as SymbolStyleLayer;
             if (!symbolLayer.layout) continue;
@@ -557,18 +577,7 @@ export class TileManager extends Evented<SourceEventType> {
             idealTileIDs = transform.getVisibleUnwrappedCoordinates(this._source.tileID)
                 .map((unwrapped) => new OverscaledTileID(unwrapped.canonical.z, unwrapped.wrap, unwrapped.canonical.z, unwrapped.canonical.x, unwrapped.canonical.y));
         } else {
-            idealTileIDs = coveringTiles(transform, {
-                tileSize: this.usedForTerrain ? this.tileSize : this._source.tileSize,
-                minzoom: this._source.minzoom,
-                maxzoom: this._source.type === 'vector' && this.map._zoomLevelsToOverscale !== undefined
-                    ? Math.max(this._source.maxzoom, transform.maxZoom - this.map._zoomLevelsToOverscale)
-                    : this._source.maxzoom,
-                roundZoom: this.usedForTerrain ? false : this._source.roundZoom,
-                reparseOverscaled: this._source.reparseOverscaled,
-                terrain,
-                calculateTileZoom: this._source.calculateTileZoom,
-                maxContentElevation: this._updateMaxContentElevation(),
-            });
+            idealTileIDs = this._coveringTiles(transform, terrain);
 
             if (this._source.hasTile) { // tile should be in bounds
                 idealTileIDs = idealTileIDs.filter((coord) => this._source.hasTile(coord));
@@ -592,11 +601,19 @@ export class TileManager extends Evented<SourceEventType> {
         // the most ideal tile for the current viewport. This may include tiles like
         // parent or child tiles that are *already* loaded.
         const zoom: number = coveringZoomLevel(transform, this._source);
+        const isRaster = isRasterType(this._source.type);
+        const fading = isRaster && this._rasterFadeDuration > 0 && !terrain;
+
+        // The same tiles wanted of the same tiles in the same state: the answer would be the one already acted on.
+        const retained = this._retained;
+        if (!fading && retained && retained.zoom === zoom && retained.signature === this._inViewTiles.signature() && sameTileIDs(retained.ideal, idealTileIDs)) {
+            return;
+        }
+
         const retain: Record<string, OverscaledTileID> = this._updateRetainedTiles(idealTileIDs, zoom);
 
         // enable fading for raster source except when using terrain which doesn't currently support fading
-        const isRaster = isRasterType(this._source.type);
-        if (isRaster && this._rasterFadeDuration > 0 && !terrain) {
+        if (fading) {
             updateFadingTiles(this._inViewTiles, idealTileIDs, retain, this._maxFadingAncestorLevels, this._source.minzoom, this._source.maxzoom, this._rasterFadeDuration);
         }
 
@@ -606,6 +623,40 @@ export class TileManager extends Evented<SourceEventType> {
         } else {
             this._cleanUpVectorTiles(retain);
         }
+
+        // A tile held for its symbols to fade is let go by the clock, so it is looked at again.
+        const held = this._inViewTiles.getAllTiles().some(tile => tile.holdingForSymbolFade());
+        this._retained = held ? null : {ideal: idealTileIDs, zoom, signature: this._inViewTiles.signature()};
+    }
+
+    /** One walk of the tile tree for every source of a kind: `style._updateSources` keeps the walks of one sweep. */
+    _coveringTiles(transform: ITransform, terrain?: Terrain): OverscaledTileID[] {
+        const options = {
+            tileSize: this.usedForTerrain ? this.tileSize : this._source.tileSize,
+            minzoom: this._source.minzoom,
+            maxzoom: this._source.type === 'vector' && this.map._zoomLevelsToOverscale !== undefined
+                ? Math.max(this._source.maxzoom, transform.maxZoom - this.map._zoomLevelsToOverscale)
+                : this._source.maxzoom,
+            roundZoom: this.usedForTerrain ? false : this._source.roundZoom,
+            reparseOverscaled: this._source.reparseOverscaled,
+            terrain,
+            calculateTileZoom: this._source.calculateTileZoom,
+            maxContentElevation: this._updateMaxContentElevation(),
+        };
+        const sweep = this.style?._coveringSweep;
+        if (!sweep) return coveringTiles(transform, options);
+        const key = `${options.tileSize}/${options.minzoom}/${options.maxzoom}/${options.roundZoom}/${options.reparseOverscaled}/${options.maxContentElevation}`;
+        let walks = sweep.get(options.calculateTileZoom);
+        if (!walks) {
+            walks = new globalThis.Map();
+            sweep.set(options.calculateTileZoom, walks);
+        }
+        let tiles = walks.get(key);
+        if (!tiles) {
+            tiles = coveringTiles(transform, options);
+            walks.set(key, tiles);
+        }
+        return tiles;
     }
 
     /**
@@ -748,14 +799,14 @@ export class TileManager extends Evented<SourceEventType> {
             this._setTileReloadTimer(tileID.key, tile);
 
             // set the tileID because the cached tile could have had a different wrap value
-            tile.tileID = tileID;
+            tile.tileID = tileID.clone();
             this._state.initializeTileState(tile, this.style);
         }
 
         const cached = tile;
 
         if (!tile) {
-            tile = new Tile(tileID, this._source.tileSize * tileID.overscaleFactor());
+            tile = new Tile(tileID.clone(), this._source.tileSize * tileID.overscaleFactor());
             this._loadTile(tile, tileID.key, tile.state, false);
         }
 
@@ -973,11 +1024,25 @@ export class TileManager extends Evented<SourceEventType> {
     }
 
     getVisibleCoordinates(symbolLayer?: boolean): OverscaledTileID[] {
-        const coords = this.getRenderableIds(symbolLayer).map((id) => this._inViewTiles.getTileById(id).tileID);
-        if (this.transform) {
-            this.transform.populateCache(coords);
+        return this.getRenderableIds(symbolLayer).map((id) => this._inViewTiles.getTileById(id).tileID);
+    }
+
+    /** For the painter, which only reads them: the lists are kept from frame to frame. */
+    getRenderOrder(): RenderOrder {
+        const signature = this._inViewTiles.signature();
+        const bearing = this.transform?.bearingInRadians;
+        let order = this._renderOrder;
+        if (!order || order.signature !== signature || order.bearing !== bearing) {
+            const ascending = this.getVisibleCoordinates(false);
+            order = this._renderOrder = {
+                signature,
+                bearing,
+                ascending,
+                descending: ascending.slice().reverse(),
+                descendingSymbol: this.getVisibleCoordinates(true).reverse(),
+            };
         }
-        return coords;
+        return order;
     }
 
     hasTransition(): boolean {

@@ -10,6 +10,7 @@ import {isAbortError} from '../util/abort_error.ts';
 import {MessageType} from '../util/actor_messages.ts';
 import {tileIdToLngLatBounds} from '../tile/tile_id_to_lng_lat_bounds.ts';
 import {UpdateQueue} from '../util/update_queue.ts';
+import {markPlainData} from '../util/web_worker_transfer.ts';
 import {getRegisteredProjection} from '../geo/projection/projection_crud.ts';
 import {identityCrs} from '../geo/projection/crs.ts';
 
@@ -334,9 +335,7 @@ export class GeoJSONSource extends Evented<SourceEventType> implements Source {
      * @returns a promise which resolves to the source's actual GeoJSON data
      */
     async getData(): Promise<GeoJSON.GeoJSON> {
-        while (this._data.url) {
-            await this.once('data');
-        }
+        if (this._data.url) throw new Error(`GeoJSONSource "${this.id}": the data of a URL source is not kept`);
         if (this._data.geojson) {
             return this._data.geojson;
         }
@@ -476,7 +475,7 @@ export class GeoJSONSource extends Evented<SourceEventType> implements Source {
         if (crs) params.crs = crs;
 
         if (!('data' in update)) {
-            if (update.diff) params.dataDiff = update.diff;
+            if (update.diff) params.dataDiff = markPlainData(update.diff);
             if (update.updateCluster) params.updateCluster = true;
             return params;
         }
@@ -487,7 +486,7 @@ export class GeoJSONSource extends Evented<SourceEventType> implements Source {
             return params;
         }
 
-        params.data = update.data;
+        params.data = markPlainData(update.data);
         return params;
     }
 
@@ -519,8 +518,6 @@ export class GeoJSONSource extends Evented<SourceEventType> implements Source {
 
     /**
      * Applies the result of a worker update to this source and fires the events that reload its tiles.
-     *
-     * The worker sends back the data it loaded from a URL, which becomes this source's copy of the data.
      *
      * An update that a `setData` call replaced while it was being sent leaves this source's copy of the data alone,
      * since the data its result describes is no longer the source's, and still fires its events.

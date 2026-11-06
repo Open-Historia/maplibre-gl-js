@@ -15,16 +15,21 @@ uniform vec3 u_spin_weights;
 
 void main() {
 
-    // read and cross-fade colors from the main and parent tiles
+    // read the main tile's color, and cross-fade the parent's only while fading:
+    // the second texture unit may hold another tile's texture, and mix(a, b, 0.0)
+    // is only a while b is finite (a nearly transparent texel overflows rgb / a)
     vec4 color0 = texture(u_image0, v_pos0.xy / v_pos0.z);
-    vec4 color1 = texture(u_image1, v_pos1.xy / v_pos1.z);
     if (color0.a > 0.0) {
         color0.rgb = color0.rgb / color0.a;
     }
-    if (color1.a > 0.0) {
-        color1.rgb = color1.rgb / color1.a;
+    vec4 color = color0;
+    if (u_fade_t > 0.0) {
+        vec4 color1 = texture(u_image1, v_pos1.xy / v_pos1.z);
+        if (color1.a > 0.0) {
+            color1.rgb = color1.rgb / color1.a;
+        }
+        color = mix(color0, color1, u_fade_t);
     }
-    vec4 color = mix(color0, color1, u_fade_t);
     color.a *= u_opacity;
     vec3 rgb = color.rgb;
 

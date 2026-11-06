@@ -1,4 +1,5 @@
 import { AxisType, clip } from "./clip";
+import { compactTile } from "./compact";
 import { createTile } from "./tile";
 import { transformTile } from "./transform";
 import type { GeoJSONVTInternalFeature, GeoJSONVTOptions, ClusterOrPointFeature, GeoJSONVTTileIndex, GeoJSONVTInternalTile, GeoJSONVTTile } from "./definitions";
@@ -12,7 +13,9 @@ export class TileIndex implements GeoJSONVTTileIndex {
     public tiles: {[key: string]: GeoJSONVTInternalTile};
     /** @internal */
     public stats: {[key: string]: number} = {};
-    
+    /** Tiles cut on demand, least recently asked for first, and what they hold: these can be cut again. */
+    private drilled = new Map<number, GeoJSONVTInternalTile>();
+    private drilledPoints = 0;
 
     constructor(private options: GeoJSONVTOptions) {
         this.tiles = {};
@@ -46,7 +49,7 @@ export class TileIndex implements GeoJSONVTTileIndex {
         // re-generate root tile with updated feature set
         const [z, x, y] = [0, 0, 0];
         const rootSource = this.clipToWorld(source);
-        const rootTile = createTile(rootSource, z, x, y, options);
+        const rootTile = compactTile(createTile(rootSource, z, x, y, options), options.extent);
         rootTile.source = rootSource;
 
         // update tile index with new root tile - ready for getTile calls
@@ -89,6 +92,7 @@ export class TileIndex implements GeoJSONVTTileIndex {
 
         const id = toID(z, x, y);
         if (this.tiles[id]) {
+            this.touch(id);
             return transformTile(this.tiles[id], extent);
         }
 
@@ -116,9 +120,29 @@ export class TileIndex implements GeoJSONVTTileIndex {
         this.splitTile(parent.source, z0, x0, y0, z, x, y);
         if (debug > 1) console.timeEnd('drilling down');
 
-        if (!this.tiles[id]) return null;
+        const tile = this.tiles[id];
+        if (!tile) return null;
 
-        return transformTile(this.tiles[id], extent);
+        this.touch(id);
+        this.forget();
+        return transformTile(tile, extent);
+    }
+
+    private touch(id: number): void {
+        const tile = this.drilled.get(id);
+        if (!tile) return;
+        this.drilled.delete(id);
+        this.drilled.set(id, tile);
+    }
+
+    /** Gives back the tiles asked for longest ago. A tile's source is kept by every tile above it, so it is cut again when asked for. */
+    private forget(): void {
+        for (const [id, tile] of this.drilled) {
+            if (this.drilledPoints <= this.options.drilledMaxPoints) return;
+            this.drilled.delete(id);
+            this.drilledPoints -= weight(tile);
+            delete this.tiles[id];
+        }
     }
 
     /**
@@ -171,8 +195,13 @@ export class TileIndex implements GeoJSONVTTileIndex {
             if (!tile) {
                 if (debug > 1) console.time('creation');
 
-                tile = this.tiles[id] = createTile(features, z, x, y, options);
-                this.tileCoords.push({z, x, y, id});
+                tile = this.tiles[id] = compactTile(createTile(features, z, x, y, options), options.extent);
+                if (cz == null) {
+                    this.tileCoords.push({z, x, y, id});
+                } else {
+                    this.drilled.set(id, tile);
+                    this.drilledPoints += weight(tile);
+                }
 
                 if (debug) {
                     if (debug > 1) {
@@ -203,8 +232,8 @@ export class TileIndex implements GeoJSONVTTileIndex {
                 if (x !== cx >> zoomSteps || y !== cy >> zoomSteps) continue;
             }
 
-            // if we slice further down, no need to keep source geometry
-            tile.source = null;
+            // if we slice further down, no need to keep source geometry; a drilled tile keeps it, as it can be forgotten
+            if (cz == null) tile.source = null;
 
             if (!features.length) continue;
 
@@ -310,6 +339,7 @@ export class TileIndex implements GeoJSONVTTileIndex {
                 this.total--;
             }
 
+            if (this.drilled.delete(id)) this.drilledPoints -= weight(tile);
             delete this.tiles[id];
             removedLookup.add(id);
         }
@@ -319,6 +349,11 @@ export class TileIndex implements GeoJSONVTTileIndex {
             this.tileCoords = this.tileCoords.filter(c => !removedLookup.has(c.id));
         }
     }
+}
+
+// Empty tiles cost something too, so they are not kept for ever.
+function weight(tile: GeoJSONVTInternalTile): number {
+    return tile.numPoints + 64;
 }
 
 function toID(z: number, x: number, y: number): number {

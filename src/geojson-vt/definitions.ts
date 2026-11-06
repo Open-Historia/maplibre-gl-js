@@ -12,7 +12,7 @@ export type GeoJSONVTOptions = {
     maxZoom?: number;
     /**
      * Max zoom in the tile index
-     * @default 5
+     * @default 3
      */
     indexMaxZoom?: number;
     /**
@@ -20,6 +20,11 @@ export type GeoJSONVTOptions = {
      * @default 100000
      */
     indexMaxPoints?: number;
+    /**
+     * Points kept in tiles cut on demand, before the ones asked for longest ago are given back
+     * @default 3000000
+     */
+    drilledMaxPoints?: number;
     /**
      * Simplification tolerance (higher means simpler)
      * @default 3

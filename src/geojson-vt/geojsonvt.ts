@@ -9,8 +9,9 @@ import type {ClusterOrPointFeature, GeoJSONVTTileIndex, GeoJSONVTInternalFeature
 
 export const defaultOptions: GeoJSONVTOptions = {
     maxZoom: 14,
-    indexMaxZoom: 5,
+    indexMaxZoom: 3,
     indexMaxPoints: 100000,
+    drilledMaxPoints: 3000000,
     tolerance: 3,
     extent: 4096,
     buffer: 64,

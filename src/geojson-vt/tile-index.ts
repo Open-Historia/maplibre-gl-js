@@ -339,7 +339,7 @@ export class TileIndex implements GeoJSONVTTileIndex {
                 this.total--;
             }
 
-            if (this.drilled.delete(id)) this.drilledPoints -= weight(tile);
+            if (this.drilled.delete(+id)) this.drilledPoints -= weight(tile);
             delete this.tiles[id];
             removedLookup.add(id);
         }

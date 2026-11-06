@@ -2,7 +2,7 @@ import {getJSON} from '../util/ajax.ts';
 import {RequestPerformance} from '../util/request_performance.ts';
 import {fromVectorTileJs, GeoJSONWrapper} from '@maplibre/vt-pbf';
 import {EXTENT} from '../data/extent.ts';
-import {GeoJSONVT, type GeoJSONVTOptions} from '@maplibre/geojson-vt';
+import {GeoJSONVT, type GeoJSONVTOptions} from '../geojson-vt/index';
 import {createExpression, type FilterSpecification} from '@maplibre/maplibre-gl-style-spec';
 import {isAbortError} from '../util/abort_error.ts';
 import {WorkerTile} from './worker_tile.ts';

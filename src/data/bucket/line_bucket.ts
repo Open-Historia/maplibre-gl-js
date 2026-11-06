@@ -1,5 +1,5 @@
 import {LineLayoutArray, LineExtLayoutArray} from '../array_types.g.ts';
-import {GEOJSONVT_CLIP_END, GEOJSONVT_CLIP_START} from '@maplibre/geojson-vt';
+import {GEOJSONVT_CLIP_END, GEOJSONVT_CLIP_START} from '../../geojson-vt/index';
 import {members as layoutAttributes} from './line_attributes.ts';
 import {members as layoutAttributesExt} from './line_attributes_ext.ts';
 import {SegmentVector} from '../segment.ts';

@@ -96,7 +96,7 @@ export type DEMState = 'loaded' | 'loading' | 'none';
  *
  */
 export class Terrain {
-    _frameTerrainData = new globalThis.Map<string, TerrainData>();
+    _frameTerrainData: Map<string, TerrainData> = new globalThis.Map<string, TerrainData>();
     /**
      * The style this terrain corresponds to
      */

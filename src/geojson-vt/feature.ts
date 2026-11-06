@@ -64,7 +64,7 @@ export function createFeature<T extends GeoJSONVTInternalFeature["type"]>(id: nu
     return feature;
 }
 
-export function optimizeLineMemory(line: SliceArray) {
+export function optimizeLineMemory(line: SliceArray): void {
     const lineImmutable = line as SliceFixedArray;
     if (line.points.length > 64) {
         lineImmutable.points = new Float64Array(line.points);

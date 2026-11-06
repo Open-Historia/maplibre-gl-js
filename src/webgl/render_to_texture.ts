@@ -77,7 +77,7 @@ export class RenderToTexture {
      */
     _coordsAscending: {[_: string]: {[_:string]: OverscaledTileID[]}};
     /** What `_coordsAscending` holds for a source, kept while neither its tiles nor the terrain's change. */
-    _keptCoords = new WeakMap<RenderOrder, {revision: number; ranges: unknown; coords: {[_:string]: OverscaledTileID[]}}>();
+    _keptCoords: WeakMap<RenderOrder, {revision: number; ranges: unknown; coords: {[_:string]: OverscaledTileID[]}}> = new WeakMap<RenderOrder, {revision: number; ranges: unknown; coords: {[_:string]: OverscaledTileID[]}}>();
     /**
      * This frame's fingerprint for each render-to-texture tile, keyed by source id
      * then tile key. A tile whose stored fingerprint differs has stale textures.

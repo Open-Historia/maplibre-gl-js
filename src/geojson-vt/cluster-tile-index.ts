@@ -165,7 +165,7 @@ export class ClusterTileIndex implements GeoJSONVTTileIndex {
      * Updates the cluster data by rebuilding.
      * @param features 
      */
-    updateIndex(features: GeoJSONVTInternalFeature[], _affected: GeoJSONVTInternalFeature[], options: GeoJSONVTOptions) {
+    updateIndex(features: GeoJSONVTInternalFeature[], _affected: GeoJSONVTInternalFeature[], options: GeoJSONVTOptions): void {
         this.options = createOptions({...options.clusterOptions, coordinates: this.options.coordinates, wrap: this.options.wrap});
         this.initialize(features);
     }

@@ -98,7 +98,7 @@ export class GeoJSONVT {
      * Updates the source data feature set using a {@link GeoJSONVTSourceDiff}
      * @param diff - the source diff object
      */
-    updateData(diff: GeoJSONVTSourceDiff, filter?: (feature: GeoJSON.Feature) => boolean) {
+    updateData(diff: GeoJSONVTSourceDiff, filter?: (feature: GeoJSON.Feature) => boolean): void {
         const options = this.options;
 
         if (!options.updateable) throw new Error('to update tile geojson `updateable` option must be set to true');
@@ -155,7 +155,7 @@ export class GeoJSONVT {
      * @param cluster - whether to enable clustering
      * @param clusterOptions - {@link SuperclusterOptions} without `coordinates` and `wrap`, which come from the index options
      */
-    updateClusterOptions(cluster: boolean, clusterOptions: GeoJSONVTOptions['clusterOptions']) {
+    updateClusterOptions(cluster: boolean, clusterOptions: GeoJSONVTOptions['clusterOptions']): void {
         const wasCluster = this.options.cluster;
         this.options.cluster = cluster;
         this.options.clusterOptions = clusterOptions;

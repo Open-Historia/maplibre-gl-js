@@ -39,7 +39,7 @@ export class TerrainTileManager extends Evented {
     _coordsKeys: string[] = null;
     _coordsSignature = '';
     _coordsRevision = 0;
-    _coords = new globalThis.Map<string, Record<string, OverscaledTileID>>();
+    _coords: Map<string, Record<string, OverscaledTileID>> = new globalThis.Map<string, Record<string, OverscaledTileID>>();
     /**
      * For each tile, the key of its raster-dem tile and the source zoom that key was scaled to, which changes once the
      * source has loaded its zoom range.

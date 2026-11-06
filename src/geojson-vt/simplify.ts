@@ -5,7 +5,7 @@
  * @param last - index of the last coordinate in the segment
  * @param sqTolerance - square tolerance value
  */
-export function simplify(coords: number[], first: number, last: number, sqTolerance: number) {
+export function simplify(coords: number[], first: number, last: number, sqTolerance: number): void {
     const stack = [first, last];
 
     while (stack.length) {
